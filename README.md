@@ -192,6 +192,101 @@ docker compose up --build
 - 前端：`http://localhost:5173`
 - 后端 API：`http://localhost:8080`
 
+## 阿里云 ECS 部署（Ubuntu）
+
+适用场景：把当前项目部署到阿里云服务器并长期运行。
+
+### 1) 服务器与安全组准备
+
+1. 系统建议：Ubuntu 22.04 / 24.04。
+2. 安全组放行：
+- `22`（SSH）
+- `80`（HTTP，建议生产使用）
+- `443`（HTTPS，建议生产使用）
+- `5173`（如果你按当前 compose 直接对外暴露前端）
+3. 不建议暴露 `8080` 到公网（后端端口）。
+
+### 2) 安装 Docker（稳定方案，推荐）
+
+若你所在网络到 `download.docker.com` 不稳定，优先使用 Ubuntu 仓库：
+
+```bash
+sudo rm -f /etc/apt/sources.list.d/docker.list \
+  /etc/apt/sources.list.d/docker-ce.list \
+  /etc/apt/sources.list.d/docker-ce.sources \
+  /etc/apt/keyrings/docker.gpg
+
+sudo apt update
+sudo apt install -y docker.io docker-compose-v2
+sudo systemctl enable --now docker
+
+docker --version
+docker compose version
+sudo docker run --rm hello-world
+```
+
+### 3) 拉取项目并配置环境
+
+```bash
+cd ~
+git clone <你的仓库地址> MyBlog
+cd MyBlog
+
+cp .env.example .env
+```
+
+编辑 `.env`，至少修改：
+
+- `APP_ENV=production`
+- `JWT_SECRET=<长随机字符串>`
+- `ADMIN_SEED_PASSWORD=<强密码>`
+- `VITE_SITE_URL=http://<你的公网IP>:5173`（有域名就改为域名）
+- `CORS_ALLOW_ORIGIN=http://<你的公网IP>:5173`
+
+生成随机密钥示例：
+
+```bash
+openssl rand -hex 32
+```
+
+### 4) 启动服务
+
+```bash
+docker compose up -d --build
+docker compose ps
+docker compose logs -f backend
+docker compose logs -f frontend
+```
+
+访问：
+
+- 前端：`http://<你的公网IP>:5173`
+- 后端：`http://<你的公网IP>:8080`
+
+### 5) 首次登录与初始化
+
+1. 使用管理员账号登录：
+- 用户名：`ADMIN_SEED_USERNAME`（默认 `admin`）
+- 密码：`ADMIN_SEED_PASSWORD`
+2. 首次登录后立刻修改管理员密码。
+
+### 6) 日常更新
+
+```bash
+cd ~/MyBlog
+git pull
+docker compose up -d --build
+```
+
+### 7) 数据备份（SQLite）
+
+数据库在宿主机 `./data/blog.db`（项目根目录下）：
+
+```bash
+cd ~/MyBlog
+cp data/blog.db data/blog_$(date +%F_%H%M%S).db
+```
+
 ## 本地启动（前后端分开）
 
 ### 后端
