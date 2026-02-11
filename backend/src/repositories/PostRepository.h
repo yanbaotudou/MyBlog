@@ -19,6 +19,13 @@ class PostRepository {
                  int& total,
                  std::string& errorMessage) const;
 
+  bool listPostsByAuthor(int64_t authorId,
+                         int page,
+                         int pageSize,
+                         std::vector<Post>& posts,
+                         int& total,
+                         std::string& errorMessage) const;
+
   std::optional<Post> findById(int64_t id, bool includeDeleted = false) const;
 
   bool createPost(const std::string& title,

@@ -87,6 +87,67 @@ bool PostRepository::listPosts(int page,
   return true;
 }
 
+bool PostRepository::listPostsByAuthor(int64_t authorId,
+                                       int page,
+                                       int pageSize,
+                                       std::vector<Post>& posts,
+                                       int& total,
+                                       std::string& errorMessage) const {
+  posts.clear();
+
+  std::string dbError;
+  sqlite3* db = db_.open(dbError);
+  if (db == nullptr) {
+    errorMessage = dbError;
+    return false;
+  }
+
+  sqlite3_stmt* countStmt = nullptr;
+  if (sqlite3_prepare_v2(db,
+                         "SELECT COUNT(1) FROM posts WHERE author_id = ? AND is_deleted = 0;",
+                         -1,
+                         &countStmt,
+                         nullptr) != SQLITE_OK) {
+    errorMessage = sqlite3_errmsg(db);
+    sqlite3_close(db);
+    return false;
+  }
+  sqlite3_bind_int64(countStmt, 1, authorId);
+
+  total = 0;
+  if (sqlite3_step(countStmt) == SQLITE_ROW) {
+    total = sqlite3_column_int(countStmt, 0);
+  }
+  sqlite3_finalize(countStmt);
+
+  const char* sql =
+      "SELECT p.id, p.title, p.content_markdown, p.author_id, u.username, p.created_at, p.updated_at, p.is_deleted "
+      "FROM posts p "
+      "JOIN users u ON u.id = p.author_id "
+      "WHERE p.author_id = ? AND p.is_deleted = 0 "
+      "ORDER BY p.updated_at DESC "
+      "LIMIT ? OFFSET ?;";
+
+  sqlite3_stmt* stmt = nullptr;
+  if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+    errorMessage = sqlite3_errmsg(db);
+    sqlite3_close(db);
+    return false;
+  }
+
+  sqlite3_bind_int64(stmt, 1, authorId);
+  sqlite3_bind_int(stmt, 2, pageSize);
+  sqlite3_bind_int(stmt, 3, (page - 1) * pageSize);
+
+  while (sqlite3_step(stmt) == SQLITE_ROW) {
+    posts.push_back(rowToPost(stmt));
+  }
+
+  sqlite3_finalize(stmt);
+  sqlite3_close(db);
+  return true;
+}
+
 std::optional<Post> PostRepository::findById(int64_t id, bool includeDeleted) const {
   std::string dbError;
   sqlite3* db = db_.open(dbError);

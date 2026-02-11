@@ -5,6 +5,7 @@
 - 未登录可浏览文章列表、文章详情、全文搜索
 - 登录后可发帖、编辑自己的文章、删除自己的文章
 - 登录后可修改自己的密码
+- 登录后可通过头像进入个人中心，管理自己的文章与合集
 - 登录后可创建合集并将文章按顺序加入合集，文章页支持合集内上一篇/下一篇跳转
 - 管理员可查看用户、改角色、封禁/解封用户
 - 后端 JWT 鉴权（Access Token）+ HttpOnly Refresh Token
@@ -257,6 +258,7 @@ bash backend/scripts/migrate.sh
 ### 文章
 
 - `GET /api/posts?page=&pageSize=`
+- `GET /api/me/posts?page=&pageSize=` (登录后查看我的文章)
 - `GET /api/posts/:id`
 - `POST /api/posts`
 - `PUT /api/posts/:id`

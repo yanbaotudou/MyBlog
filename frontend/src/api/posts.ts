@@ -13,6 +13,12 @@ export function listPosts(page = 1, pageSize = 10): Promise<PagedPosts> {
   });
 }
 
+export function listMyPosts(page = 1, pageSize = 10): Promise<PagedPosts> {
+  return apiRequest<PagedPosts>(`/api/me/posts?page=${page}&pageSize=${pageSize}`, {
+    method: "GET"
+  });
+}
+
 export function getPost(id: number): Promise<Post> {
   return apiRequest<Post>(`/api/posts/${id}`, {
     method: "GET",

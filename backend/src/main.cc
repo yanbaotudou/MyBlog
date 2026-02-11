@@ -203,6 +203,22 @@ int main() {
       {drogon::Post});
 
   drogon::app().registerHandler(
+      "/api/posts/mine",
+      [&postController](const drogon::HttpRequestPtr& req,
+                        std::function<void(const drogon::HttpResponsePtr&)>&& callback) {
+        postController.listMyPosts(req, std::move(callback));
+      },
+      {drogon::Get});
+
+  drogon::app().registerHandler(
+      "/api/me/posts",
+      [&postController](const drogon::HttpRequestPtr& req,
+                        std::function<void(const drogon::HttpResponsePtr&)>&& callback) {
+        postController.listMyPosts(req, std::move(callback));
+      },
+      {drogon::Get});
+
+  drogon::app().registerHandler(
       "/api/posts/{1}",
       [&postController](const drogon::HttpRequestPtr& req,
                         std::function<void(const drogon::HttpResponsePtr&)>&& callback,

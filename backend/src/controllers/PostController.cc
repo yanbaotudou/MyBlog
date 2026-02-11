@@ -58,6 +58,47 @@ void PostController::listPosts(const drogon::HttpRequestPtr& req,
   callback(utils::makeSuccess(data, requestId));
 }
 
+void PostController::listMyPosts(const drogon::HttpRequestPtr& req,
+                                 std::function<void(const drogon::HttpResponsePtr&)>&& callback) const {
+  const std::string requestId = utils::getRequestId(req);
+
+  RequestUser authUser;
+  ApiError authError(401, "AUTH_REQUIRED", "auth required");
+  if (!AuthMiddleware::authenticate(req, jwtService_, userRepository_, authUser, authError)) {
+    callback(utils::makeError(authError, requestId));
+    return;
+  }
+
+  ApiError validationError(400, "VALIDATION_ERROR", "invalid pagination");
+  bool paginationOk = false;
+  const auto pagination = utils::readPagination(req, 10, 50, validationError, paginationOk);
+  if (!paginationOk) {
+    callback(utils::makeError(validationError, requestId));
+    return;
+  }
+
+  std::vector<Post> posts;
+  int total = 0;
+  std::string dbError;
+  if (!postRepository_.listPostsByAuthor(authUser.id, pagination.page, pagination.pageSize, posts, total, dbError)) {
+    callback(utils::makeError(ApiError(500, "DB_ERROR", dbError), requestId));
+    return;
+  }
+
+  Json::Value items(Json::arrayValue);
+  for (const auto& post : posts) {
+    items.append(postToJson(post));
+  }
+
+  Json::Value data(Json::objectValue);
+  data["items"] = items;
+  data["page"] = pagination.page;
+  data["pageSize"] = pagination.pageSize;
+  data["total"] = total;
+
+  callback(utils::makeSuccess(data, requestId));
+}
+
 void PostController::getPost(const drogon::HttpRequestPtr& req,
                              std::function<void(const drogon::HttpResponsePtr&)>&& callback,
                              const std::string& postId) const {

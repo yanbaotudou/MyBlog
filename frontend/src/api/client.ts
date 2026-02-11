@@ -18,6 +18,49 @@ export class ApiError extends Error {
 
 interface RequestOptions extends RequestInit {
   skipAuth?: boolean;
+  _retry?: boolean;
+}
+
+let refreshPromise: Promise<boolean> | null = null;
+
+async function tryRefreshAccessToken(): Promise<boolean> {
+  if (refreshPromise) {
+    return refreshPromise;
+  }
+
+  refreshPromise = (async () => {
+    try {
+      const response = await fetch("/api/auth/refresh", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        credentials: "include"
+      });
+
+      if (!response.ok) {
+        return false;
+      }
+
+      const parsed = (await response.json()) as ApiSuccess<{
+        accessToken: string;
+        user: { id: number; username: string; role: "user" | "admin"; isBanned: boolean; createdAt: string };
+      }>;
+
+      if (!parsed?.data?.accessToken || !parsed?.data?.user) {
+        return false;
+      }
+
+      authStore.setAuth(parsed.data.accessToken, parsed.data.user);
+      return true;
+    } catch {
+      return false;
+    } finally {
+      refreshPromise = null;
+    }
+  })();
+
+  return refreshPromise;
 }
 
 export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
@@ -53,10 +96,22 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
       ? (parsed as ApiErrorResponse)
       : { code: "UNKNOWN_ERROR", message: "Request failed" };
 
+    const authError =
+      response.status === 401 && (payload.code === "AUTH_REQUIRED" || payload.code === "AUTH_INVALID_TOKEN");
+
+    if (!options.skipAuth && authError && !options._retry && path !== "/api/auth/refresh") {
+      const refreshed = await tryRefreshAccessToken();
+      if (refreshed) {
+        return apiRequest<T>(path, {
+          ...options,
+          _retry: true
+        });
+      }
+    }
+
     if (
       !options.skipAuth &&
-      ((response.status === 401 && (payload.code === "AUTH_REQUIRED" || payload.code === "AUTH_INVALID_TOKEN")) ||
-        (response.status === 403 && payload.code === "USER_BANNED"))
+      (authError || (response.status === 403 && payload.code === "USER_BANNED"))
     ) {
       authStore.clear();
     }

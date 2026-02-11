@@ -1,5 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
+import {
+  ArrowLeft,
+  Calendar,
+  ChevronLeft,
+  ChevronRight,
+  Clock,
+  Edit,
+  FolderPlus,
+  Link as LinkIcon,
+  List,
+  Share2,
+  Trash2
+} from "lucide-react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { addPostToCollection, getPostCollections, listMyCollections } from "../api/collections";
 import { deletePost, getPost } from "../api/posts";
@@ -7,6 +20,33 @@ import { useAuthState } from "../store/authStore";
 import type { Collection, CollectionNavigation, PostCollectionMembership } from "../types/collection";
 import type { Post } from "../types/post";
 import { formatAbsoluteDateTime } from "../utils/dateTime";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger
+} from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger
+} from "@/components/ui/dropdown-menu";
+
+async function copyToClipboard(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export function PostDetailPage() {
   const params = useParams();
@@ -18,6 +58,7 @@ export function PostDetailPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [deleting, setDeleting] = useState(false);
+  const [shareMessage, setShareMessage] = useState("");
 
   const [memberships, setMemberships] = useState<PostCollectionMembership[]>([]);
   const [navigation, setNavigation] = useState<CollectionNavigation | null>(null);
@@ -27,12 +68,11 @@ export function PostDetailPage() {
   const [myCollections, setMyCollections] = useState<Collection[]>([]);
   const [selectedAddCollectionId, setSelectedAddCollectionId] = useState<number>(0);
   const [addingToCollection, setAddingToCollection] = useState(false);
+  const [showAddDialog, setShowAddDialog] = useState(false);
 
   const selectedCollectionId = (() => {
     const raw = searchParams.get("collectionId");
-    if (!raw) {
-      return undefined;
-    }
+    if (!raw) return undefined;
     const id = Number(raw);
     return Number.isFinite(id) && id > 0 ? id : undefined;
   })();
@@ -43,7 +83,6 @@ export function PostDetailPage() {
       setError("文章 ID 无效");
       return;
     }
-
     const run = async () => {
       setLoading(true);
       setError("");
@@ -56,15 +95,11 @@ export function PostDetailPage() {
         setLoading(false);
       }
     };
-
     void run();
   }, [params.id]);
 
   useEffect(() => {
-    if (!post) {
-      return;
-    }
-
+    if (!post) return;
     const run = async () => {
       setCollectionsLoading(true);
       setCollectionsError("");
@@ -79,17 +114,14 @@ export function PostDetailPage() {
         setCollectionsLoading(false);
       }
     };
-
     void run();
   }, [post, selectedCollectionId]);
 
   useEffect(() => {
     if (!auth.user) {
       setMyCollections([]);
-      setSelectedAddCollectionId(0);
       return;
     }
-
     const run = async () => {
       try {
         const data = await listMyCollections();
@@ -101,24 +133,17 @@ export function PostDetailPage() {
         setMyCollections([]);
       }
     };
-
     void run();
   }, [auth.user]);
 
   const canEdit = useMemo(() => {
-    if (!post || !auth.user) {
-      return false;
-    }
+    if (!post || !auth.user) return false;
     return auth.user.role === "admin" || auth.user.id === post.authorId;
-  }, [auth.user, post]);
+  }, [post, auth.user]);
 
   const handleDelete = async () => {
-    if (!post) {
-      return;
-    }
-    if (!window.confirm("确认删除这篇文章吗？")) {
-      return;
-    }
+    if (!post) return;
+    if (!window.confirm("确认删除这篇文章吗？")) return;
     setDeleting(true);
     try {
       await deletePost(post.id);
@@ -129,23 +154,8 @@ export function PostDetailPage() {
     }
   };
 
-  const handleCollectionContextChange = (collectionIdValue: string) => {
-    if (!post) {
-      return;
-    }
-    const id = Number(collectionIdValue);
-    if (!id) {
-      navigate(`/posts/${post.id}`);
-      return;
-    }
-    navigate(`/posts/${post.id}?collectionId=${id}`);
-  };
-
   const handleAddCurrentPostToCollection = async () => {
-    if (!post || !selectedAddCollectionId) {
-      return;
-    }
-
+    if (!post || !selectedAddCollectionId) return;
     setAddingToCollection(true);
     setCollectionsError("");
     try {
@@ -153,6 +163,7 @@ export function PostDetailPage() {
       const data = await getPostCollections(post.id, selectedCollectionId);
       setMemberships(data.items);
       setNavigation(data.navigation);
+      setShowAddDialog(false);
     } catch (e) {
       setCollectionsError(e instanceof Error ? e.message : "加入合集失败");
     } finally {
@@ -160,118 +171,192 @@ export function PostDetailPage() {
     }
   };
 
+  const onCopyLink = async () => {
+    const ok = await copyToClipboard(window.location.href);
+    setShareMessage(ok ? "链接已复制到剪贴板" : "复制失败");
+  };
+
+  const onCopyOutline = async () => {
+    if (!post) return;
+    const outline = `# ${post.title}\n\n1. 正文`;
+    const ok = await copyToClipboard(outline);
+    setShareMessage(ok ? "目录已复制到剪贴板" : "复制失败");
+  };
+
   if (loading) {
-    return <main className="container status-line">正在加载文章...</main>;
+    return <div className="min-h-screen flex items-center justify-center text-muted-foreground">正在加载文章...</div>;
   }
-
   if (error) {
-    return <main className="container status-line error">{error}</main>;
+    return <div className="min-h-screen flex items-center justify-center text-destructive">{error}</div>;
   }
-
   if (!post) {
-    return <main className="container empty-state">文章不存在。</main>;
+    return <div className="min-h-screen flex items-center justify-center text-muted-foreground">文章不存在</div>;
   }
 
   return (
-    <main className="container detail-page">
-      <header className="detail-header">
-        <h1>{post.title}</h1>
-        <div className="post-meta">
-          <span className="meta-pill">作者：{post.authorUsername}</span>
-          <time className="meta-pill" dateTime={post.createdAt} title={formatAbsoluteDateTime(post.createdAt)}>
-            发布时间：{formatAbsoluteDateTime(post.createdAt)}
-          </time>
-          <time className="meta-pill" dateTime={post.updatedAt} title={formatAbsoluteDateTime(post.updatedAt)}>
-            更新时间：{formatAbsoluteDateTime(post.updatedAt)}
-          </time>
-        </div>
+    <div className="min-h-screen bg-background">
+      <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 pt-6">
+        <Button variant="ghost" size="sm" className="gap-2" onClick={() => navigate("/")}>
+          <ArrowLeft className="w-4 h-4" />
+          返回首页
+        </Button>
+      </div>
 
-        <section className="collection-context-panel">
-          <div className="collection-context-row">
-            <label htmlFor="collection-context-select">合集上下文</label>
-            <select
-              id="collection-context-select"
-              value={selectedCollectionId ?? ""}
-              onChange={(e) => handleCollectionContextChange(e.target.value)}
-              disabled={collectionsLoading}
-            >
-              <option value="">不使用合集导航</option>
-              {memberships.map((item) => (
-                <option key={item.collectionId} value={item.collectionId}>
-                  {item.collectionName}（第 {item.position} 篇）
-                </option>
-              ))}
-            </select>
-            {selectedCollectionId ? (
-              <Link className="secondary-btn" to={`/collections/${selectedCollectionId}`}>
-                查看合集
-              </Link>
-            ) : null}
+      <article className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <h1 className="text-3xl md:text-4xl font-bold text-foreground mb-6">{post.title}</h1>
+
+        <div className="flex items-center justify-between flex-wrap gap-4 mb-8">
+          <div className="flex items-center gap-3">
+            <Avatar className="w-10 h-10">
+              <AvatarFallback className="bg-primary/10 text-primary">{post.authorUsername.charAt(0)}</AvatarFallback>
+            </Avatar>
+            <div>
+              <p className="font-medium text-foreground">{post.authorUsername}</p>
+              <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                <span className="flex items-center gap-1">
+                  <Calendar className="w-3.5 h-3.5" />
+                  发布于 {formatAbsoluteDateTime(post.createdAt)}
+                </span>
+                <span className="flex items-center gap-1">
+                  <Clock className="w-3.5 h-3.5" />
+                  更新于 {formatAbsoluteDateTime(post.updatedAt)}
+                </span>
+              </div>
+            </div>
           </div>
 
-          {selectedCollectionId && navigation ? (
-            <div className="collection-nav-row">
+          <div className="flex items-center gap-2">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="gap-2">
+                  <Share2 className="w-4 h-4" />
+                  分享
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={onCopyLink}>
+                  <LinkIcon className="mr-2 h-4 w-4" />
+                  复制链接
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={onCopyOutline}>
+                  <List className="mr-2 h-4 w-4" />
+                  复制目录
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            {auth.user && myCollections.length > 0 ? (
+              <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
+                <DialogTrigger asChild>
+                  <Button variant="outline" size="sm" className="gap-2">
+                    <FolderPlus className="w-4 h-4" />
+                    加入合集
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>加入合集</DialogTitle>
+                    <DialogDescription>选择要将此文章加入的合集</DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-2 mt-4">
+                    {myCollections.map((collection) => (
+                      <div
+                        key={collection.id}
+                        className={`flex items-center justify-between p-3 rounded-lg border transition-colors ${
+                          selectedAddCollectionId === collection.id ? "bg-secondary" : "hover:bg-secondary"
+                        }`}
+                        onClick={() => setSelectedAddCollectionId(collection.id)}
+                      >
+                        <div>
+                          <p className="font-medium">{collection.name}</p>
+                          <p className="text-sm text-muted-foreground">{collection.postCount} 篇文章</p>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedAddCollectionId(collection.id);
+                            void handleAddCurrentPostToCollection();
+                          }}
+                          disabled={addingToCollection}
+                        >
+                          添加
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </DialogContent>
+              </Dialog>
+            ) : null}
+
+            {canEdit ? (
+              <>
+                <Button variant="outline" size="sm" className="gap-2" onClick={() => navigate(`/editor/${post.id}`)}>
+                  <Edit className="w-4 h-4" />
+                  编辑
+                </Button>
+                <Button variant="destructive" size="sm" className="gap-2" onClick={handleDelete} disabled={deleting}>
+                  <Trash2 className="w-4 h-4" />
+                  删除
+                </Button>
+              </>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="flex gap-2 mb-8">
+          <Badge variant="secondary">文章</Badge>
+          {selectedCollectionId ? <Badge variant="secondary">合集上下文</Badge> : null}
+        </div>
+
+        <div className="markdown-content">
+          <ReactMarkdown>{post.contentMarkdown}</ReactMarkdown>
+        </div>
+
+        {shareMessage ? <p className="text-xs text-muted-foreground mt-4">{shareMessage}</p> : null}
+        {collectionsError ? <p className="text-xs text-destructive mt-2">{collectionsError}</p> : null}
+
+        {selectedCollectionId && navigation ? (
+          <div className="bg-secondary/50 rounded-xl p-6 mt-8">
+            <p className="text-sm text-muted-foreground mb-4">
+              来自合集：
+              <span className="font-medium text-foreground">
+                {memberships.find((m) => m.collectionId === selectedCollectionId)?.collectionName || `#${selectedCollectionId}`}
+              </span>
+            </p>
+            <div className="flex items-center justify-between gap-4">
               {navigation.prev ? (
-                <Link className="secondary-btn" to={`/posts/${navigation.prev.id}?collectionId=${selectedCollectionId}`}>
-                  上一篇：{navigation.prev.title}
+                <Link to={`/posts/${navigation.prev.id}?collectionId=${selectedCollectionId}`} className="flex-1">
+                  <Button variant="ghost" className="w-full justify-start gap-2 h-auto py-3">
+                    <ChevronLeft className="w-4 h-4 shrink-0" />
+                    <div className="text-left">
+                      <p className="text-xs text-muted-foreground">上一篇</p>
+                      <p className="text-sm font-medium line-clamp-1">{navigation.prev.title}</p>
+                    </div>
+                  </Button>
                 </Link>
               ) : (
-                <button className="secondary-btn" disabled>
-                  已是第一篇
-                </button>
+                <div className="flex-1" />
               )}
 
               {navigation.next ? (
-                <Link className="secondary-btn" to={`/posts/${navigation.next.id}?collectionId=${selectedCollectionId}`}>
-                  下一篇：{navigation.next.title}
+                <Link to={`/posts/${navigation.next.id}?collectionId=${selectedCollectionId}`} className="flex-1">
+                  <Button variant="ghost" className="w-full justify-end gap-2 h-auto py-3">
+                    <div className="text-right">
+                      <p className="text-xs text-muted-foreground">下一篇</p>
+                      <p className="text-sm font-medium line-clamp-1">{navigation.next.title}</p>
+                    </div>
+                    <ChevronRight className="w-4 h-4 shrink-0" />
+                  </Button>
                 </Link>
               ) : (
-                <button className="secondary-btn" disabled>
-                  已是最后一篇
-                </button>
+                <div className="flex-1" />
               )}
             </div>
-          ) : null}
-
-          {collectionsError ? <p className="status-line error">{collectionsError}</p> : null}
-        </section>
-
-        {auth.user && myCollections.length > 0 ? (
-          <section className="collection-context-row add-to-collection-row">
-            <label htmlFor="add-collection-select">加入我的合集</label>
-            <select
-              id="add-collection-select"
-              value={selectedAddCollectionId || ""}
-              onChange={(e) => setSelectedAddCollectionId(Number(e.target.value))}
-              disabled={addingToCollection}
-            >
-              {myCollections.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name}
-                </option>
-              ))}
-            </select>
-            <button className="primary-btn" onClick={handleAddCurrentPostToCollection} disabled={addingToCollection}>
-              {addingToCollection ? "加入中..." : "加入合集"}
-            </button>
-          </section>
-        ) : null}
-
-        {canEdit ? (
-          <div className="action-row">
-            <Link className="secondary-btn" to={`/editor/${post.id}`}>
-              编辑
-            </Link>
-            <button className="danger-btn" onClick={handleDelete} disabled={deleting}>
-              删除
-            </button>
           </div>
         ) : null}
-      </header>
-
-      <article className="markdown-body">
-        <ReactMarkdown>{post.contentMarkdown}</ReactMarkdown>
       </article>
-    </main>
+    </div>
   );
 }
