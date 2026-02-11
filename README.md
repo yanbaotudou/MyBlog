@@ -180,6 +180,8 @@ cp .env.example .env
 - `JWT_SECRET`
 - `ADMIN_SEED_PASSWORD`
 - `VITE_SITE_URL`（生产环境填你的公网域名，如 `https://blog.example.com`）
+- 可选镜像覆盖（网络受限时）：
+  `UBUNTU_IMAGE`、`NODE_IMAGE`、`NGINX_IMAGE`
 
 3. 启动：
 
@@ -243,6 +245,12 @@ cp .env.example .env
 - `VITE_SITE_URL=http://<你的公网IP>:5173`（有域名就改为域名）
 - `CORS_ALLOW_ORIGIN=http://<你的公网IP>:5173`
 
+如果拉镜像超时（如 Docker Hub 不稳定），同时设置：
+
+- `UBUNTU_IMAGE=registry.cn-hangzhou.aliyuncs.com/library/ubuntu:24.04`
+- `NODE_IMAGE=registry.cn-hangzhou.aliyuncs.com/library/node:20-alpine`
+- `NGINX_IMAGE=registry.cn-hangzhou.aliyuncs.com/library/nginx:1.27-alpine`
+
 生成随机密钥示例：
 
 ```bash
@@ -252,6 +260,7 @@ openssl rand -hex 32
 ### 4) 启动服务
 
 ```bash
+export COMPOSE_BAKE=false
 docker compose up -d --build
 docker compose ps
 docker compose logs -f backend

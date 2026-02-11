@@ -3,6 +3,8 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile
+      args:
+        UBUNTU_IMAGE: ${UBUNTU_IMAGE:-ubuntu:24.04}
     container_name: study-blog-backend
     env_file:
       - .env
@@ -28,6 +30,8 @@ services:
       context: .
       dockerfile: frontend/Dockerfile
       args:
+        NODE_IMAGE: ${NODE_IMAGE:-node:20-alpine}
+        NGINX_IMAGE: ${NGINX_IMAGE:-nginx:1.27-alpine}
         VITE_SITE_URL: ${VITE_SITE_URL:-http://localhost:5173}
     container_name: study-blog-frontend
     depends_on:
