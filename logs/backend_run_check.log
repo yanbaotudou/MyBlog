@@ -1,0 +1,4 @@
+20260211 02:10:36.358883 UTC 17184 INFO  starting Study Blog API on port 8080 - main.cc:103
+20260211 02:10:36.359013 UTC 17184 INFO  db path: ./data/blog.db - main.cc:104
+20260211 02:10:36.579085 UTC 17184 INFO  default admin already exists, skip seeding - main.cc:91
+20260211 02:10:36.584443 UTC 17184 FATAL Address already in use (errno=98) , Bind address failed at 0.0.0.0:8080 - Socket.cc:67

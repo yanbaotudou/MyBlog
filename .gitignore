@@ -1,0 +1,15 @@
+# Environment
+.env
+
+# Build outputs
+backend/build/
+frontend/dist/
+frontend/node_modules/
+
+# Runtime data
+data/
+
+# OS/editor
+.DS_Store
+.vscode/
+.idea/

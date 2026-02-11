@@ -1,0 +1,8 @@
+20260211 02:06:48.544258 UTC 16148 INFO  starting Study Blog API on port 8080 - main.cc:103
+20260211 02:06:48.544353 UTC 16148 INFO  db path: /home/xiaohu/workspace/MyBlog/data/blog.db - main.cc:104
+20260211 02:06:48.790158 UTC 16148 INFO  default admin already exists, skip seeding - main.cc:91
+20260211 02:06:52.609208 UTC 16185 INFO  incoming request method=GET path=/api/posts - RequestLogger.h:12
+20260211 02:06:52.613284 UTC 16185 INFO  request complete method=GET path=/api/posts status=200 - RequestLogger.h:18
+20260211 02:11:16.274670 UTC 16184 INFO  incoming request method=POST path=/api/auth/register - RequestLogger.h:12
+20260211 02:11:16.552356 UTC 16184 INFO  request complete method=POST path=/api/auth/register status=409 - RequestLogger.h:18
+20260211 02:11:30.537594 UTC 16148 WARN  SIGTERM signal received. - HttpAppFrameworkImpl.cc:181
