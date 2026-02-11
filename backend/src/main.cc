@@ -10,6 +10,7 @@
 #include "controllers/AdminController.h"
 #include "controllers/AuthController.h"
 #include "controllers/CollectionController.h"
+#include "controllers/InteractionController.h"
 #include "controllers/PostController.h"
 #include "controllers/SearchController.h"
 #include "db/Database.h"
@@ -17,6 +18,7 @@
 #include "repositories/PostRepository.h"
 #include "repositories/SearchRepository.h"
 #include "repositories/CollectionRepository.h"
+#include "repositories/InteractionRepository.h"
 #include "repositories/UserRepository.h"
 #include "utils/Validation.h"
 
@@ -114,6 +116,7 @@ int main() {
   const blog::PostRepository postRepository(db);
   const blog::SearchRepository searchRepository(db);
   const blog::CollectionRepository collectionRepository(db);
+  const blog::InteractionRepository interactionRepository(db);
 
   const blog::JwtService jwtService(config);
   blog::RefreshTokenService refreshTokenService(db, config);
@@ -124,6 +127,8 @@ int main() {
   const blog::AdminController adminController(userRepository, jwtService);
   const blog::CollectionController collectionController(
       collectionRepository, postRepository, userRepository, jwtService);
+  const blog::InteractionController interactionController(
+      interactionRepository, postRepository, userRepository, jwtService);
 
   blog::logging::registerRequestLogger();
 
@@ -237,6 +242,78 @@ int main() {
       [&postController](const drogon::HttpRequestPtr& req,
                         std::function<void(const drogon::HttpResponsePtr&)>&& callback,
                         const std::string& id) { postController.deletePost(req, std::move(callback), id); },
+      {drogon::Delete});
+
+  drogon::app().registerHandler(
+      "/api/posts/{1}/interactions",
+      [&interactionController](const drogon::HttpRequestPtr& req,
+                               std::function<void(const drogon::HttpResponsePtr&)>&& callback,
+                               const std::string& postId) {
+        interactionController.getPostInteractions(req, std::move(callback), postId);
+      },
+      {drogon::Get});
+
+  drogon::app().registerHandler(
+      "/api/posts/{1}/like",
+      [&interactionController](const drogon::HttpRequestPtr& req,
+                               std::function<void(const drogon::HttpResponsePtr&)>&& callback,
+                               const std::string& postId) {
+        interactionController.likePost(req, std::move(callback), postId);
+      },
+      {drogon::Put});
+
+  drogon::app().registerHandler(
+      "/api/posts/{1}/like",
+      [&interactionController](const drogon::HttpRequestPtr& req,
+                               std::function<void(const drogon::HttpResponsePtr&)>&& callback,
+                               const std::string& postId) {
+        interactionController.unlikePost(req, std::move(callback), postId);
+      },
+      {drogon::Delete});
+
+  drogon::app().registerHandler(
+      "/api/posts/{1}/favorite",
+      [&interactionController](const drogon::HttpRequestPtr& req,
+                               std::function<void(const drogon::HttpResponsePtr&)>&& callback,
+                               const std::string& postId) {
+        interactionController.favoritePost(req, std::move(callback), postId);
+      },
+      {drogon::Put});
+
+  drogon::app().registerHandler(
+      "/api/posts/{1}/favorite",
+      [&interactionController](const drogon::HttpRequestPtr& req,
+                               std::function<void(const drogon::HttpResponsePtr&)>&& callback,
+                               const std::string& postId) {
+        interactionController.unfavoritePost(req, std::move(callback), postId);
+      },
+      {drogon::Delete});
+
+  drogon::app().registerHandler(
+      "/api/posts/{1}/comments",
+      [&interactionController](const drogon::HttpRequestPtr& req,
+                               std::function<void(const drogon::HttpResponsePtr&)>&& callback,
+                               const std::string& postId) {
+        interactionController.listComments(req, std::move(callback), postId);
+      },
+      {drogon::Get});
+
+  drogon::app().registerHandler(
+      "/api/posts/{1}/comments",
+      [&interactionController](const drogon::HttpRequestPtr& req,
+                               std::function<void(const drogon::HttpResponsePtr&)>&& callback,
+                               const std::string& postId) {
+        interactionController.createComment(req, std::move(callback), postId);
+      },
+      {drogon::Post});
+
+  drogon::app().registerHandler(
+      "/api/comments/{1}",
+      [&interactionController](const drogon::HttpRequestPtr& req,
+                               std::function<void(const drogon::HttpResponsePtr&)>&& callback,
+                               const std::string& commentId) {
+        interactionController.deleteComment(req, std::move(callback), commentId);
+      },
       {drogon::Delete});
 
   drogon::app().registerHandler(

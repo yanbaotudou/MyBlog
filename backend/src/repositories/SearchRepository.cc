@@ -28,6 +28,18 @@ bool isAsciiAlnumToken(const std::string& token) {
   return true;
 }
 
+std::string escapeLikePattern(const std::string& input) {
+  std::string escaped;
+  escaped.reserve(input.size() * 2);
+  for (const char c : input) {
+    if (c == '\\' || c == '%' || c == '_') {
+      escaped.push_back('\\');
+    }
+    escaped.push_back(c);
+  }
+  return escaped;
+}
+
 }  // namespace
 
 SearchRepository::SearchRepository(const Database& db) : db_(db) {}
@@ -91,12 +103,25 @@ bool SearchRepository::searchPosts(const std::string& q,
   }
 
   const std::string ftsQuery = toFtsQuery(q);
+  const std::string likePattern = "%" + escapeLikePattern(q) + "%";
 
   const char* countSql =
-      "SELECT COUNT(1) "
-      "FROM posts_fts "
-      "JOIN posts p ON p.id = posts_fts.rowid "
-      "WHERE posts_fts MATCH ? AND p.is_deleted = 0;";
+      "WITH fts_hits AS ("
+      "  SELECT p.id AS id "
+      "  FROM posts_fts "
+      "  JOIN posts p ON p.id = posts_fts.rowid "
+      "  WHERE posts_fts MATCH ? AND p.is_deleted = 0"
+      "), like_hits AS ("
+      "  SELECT p.id AS id "
+      "  FROM posts p "
+      "  WHERE p.is_deleted = 0 "
+      "    AND (p.title LIKE ? ESCAPE '\\' OR p.content_markdown LIKE ? ESCAPE '\\')"
+      "), merged AS ("
+      "  SELECT id FROM fts_hits "
+      "  UNION "
+      "  SELECT id FROM like_hits"
+      ") "
+      "SELECT COUNT(1) FROM merged;";
 
   sqlite3_stmt* countStmt = nullptr;
   if (sqlite3_prepare_v2(db, countSql, -1, &countStmt, nullptr) != SQLITE_OK) {
@@ -106,18 +131,36 @@ bool SearchRepository::searchPosts(const std::string& q,
   }
 
   sqlite3_bind_text(countStmt, 1, ftsQuery.c_str(), -1, SQLITE_TRANSIENT);
+  sqlite3_bind_text(countStmt, 2, likePattern.c_str(), -1, SQLITE_TRANSIENT);
+  sqlite3_bind_text(countStmt, 3, likePattern.c_str(), -1, SQLITE_TRANSIENT);
   if (sqlite3_step(countStmt) == SQLITE_ROW) {
     total = sqlite3_column_int(countStmt, 0);
   }
   sqlite3_finalize(countStmt);
 
   const char* sql =
+      "WITH fts_hits AS ("
+      "  SELECT p.id AS id, bm25(posts_fts) AS score "
+      "  FROM posts_fts "
+      "  JOIN posts p ON p.id = posts_fts.rowid "
+      "  WHERE posts_fts MATCH ? AND p.is_deleted = 0"
+      "), like_hits AS ("
+      "  SELECT p.id AS id, 1000.0 AS score "
+      "  FROM posts p "
+      "  WHERE p.is_deleted = 0 "
+      "    AND (p.title LIKE ? ESCAPE '\\' OR p.content_markdown LIKE ? ESCAPE '\\')"
+      "), merged AS ("
+      "  SELECT id, MIN(score) AS score FROM ("
+      "    SELECT id, score FROM fts_hits "
+      "    UNION ALL "
+      "    SELECT id, score FROM like_hits"
+      "  ) GROUP BY id"
+      ") "
       "SELECT p.id, p.title, p.content_markdown, p.author_id, u.username, p.created_at, p.updated_at, p.is_deleted "
-      "FROM posts_fts "
-      "JOIN posts p ON p.id = posts_fts.rowid "
+      "FROM merged m "
+      "JOIN posts p ON p.id = m.id "
       "JOIN users u ON u.id = p.author_id "
-      "WHERE posts_fts MATCH ? AND p.is_deleted = 0 "
-      "ORDER BY bm25(posts_fts), p.updated_at DESC "
+      "ORDER BY m.score ASC, p.updated_at DESC "
       "LIMIT ? OFFSET ?;";
 
   sqlite3_stmt* stmt = nullptr;
@@ -128,8 +171,10 @@ bool SearchRepository::searchPosts(const std::string& q,
   }
 
   sqlite3_bind_text(stmt, 1, ftsQuery.c_str(), -1, SQLITE_TRANSIENT);
-  sqlite3_bind_int(stmt, 2, pageSize);
-  sqlite3_bind_int(stmt, 3, (page - 1) * pageSize);
+  sqlite3_bind_text(stmt, 2, likePattern.c_str(), -1, SQLITE_TRANSIENT);
+  sqlite3_bind_text(stmt, 3, likePattern.c_str(), -1, SQLITE_TRANSIENT);
+  sqlite3_bind_int(stmt, 4, pageSize);
+  sqlite3_bind_int(stmt, 5, (page - 1) * pageSize);
 
   while (sqlite3_step(stmt) == SQLITE_ROW) {
     Post post;

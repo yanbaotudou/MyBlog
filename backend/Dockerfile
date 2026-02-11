@@ -9,10 +9,22 @@ RUN apt-get update \
     cmake \
     pkg-config \
     libdrogon-dev \
+    libjsoncpp-dev \
+    uuid-dev \
+    libpq-dev \
+    libmariadb-dev \
+    libmariadb-dev-compat \
+    libbrotli-dev \
+    libhiredis-dev \
+    libyaml-cpp-dev \
+    zlib1g-dev \
     libargon2-dev \
     libsqlite3-dev \
     libssl-dev \
     ca-certificates \
+  && ln -sf /usr/lib/x86_64-linux-gnu/libmariadb.so /usr/lib/x86_64-linux-gnu/libmariadbclient.so \
+  && mkdir -p /usr/lib/mariadb \
+  && ln -sf /usr/lib/x86_64-linux-gnu/libmariadbclient.so /usr/lib/mariadb/libmariadbclient.so \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app/backend

@@ -85,6 +85,23 @@ export function CollectionDetailPage() {
 
   const collectionId = Number(params.id);
 
+  const loadAllPostsForPicker = async (): Promise<Post[]> => {
+    const pageSize = 50;
+    const maxPages = 100;
+    const result: Post[] = [];
+
+    for (let page = 1; page <= maxPages; page += 1) {
+      const data = await listPosts(page, pageSize);
+      result.push(...data.items);
+
+      if (data.items.length < pageSize || result.length >= data.total) {
+        break;
+      }
+    }
+
+    return result;
+  };
+
   const loadData = async () => {
     if (!collectionId) {
       setError("合集 ID 无效");
@@ -101,8 +118,8 @@ export function CollectionDetailPage() {
         auth.user &&
         (auth.user.role === "admin" || auth.user.id === collectionData.collection.ownerId)
       ) {
-        const postsData = await listPosts(1, 200);
-        setAllPosts(postsData.items);
+        const all = await loadAllPostsForPicker();
+        setAllPosts(all);
       } else {
         setAllPosts([]);
       }

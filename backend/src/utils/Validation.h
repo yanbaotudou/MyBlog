@@ -19,6 +19,7 @@ bool validateUsername(const std::string& username, blog::ApiError& error);
 bool validatePassword(const std::string& password, blog::ApiError& error);
 bool validateTitle(const std::string& title, blog::ApiError& error);
 bool validateContent(const std::string& content, blog::ApiError& error);
+bool validateCommentContent(const std::string& content, blog::ApiError& error);
 bool validateRole(const std::string& role, blog::ApiError& error);
 bool validateSearchQuery(const std::string& q, blog::ApiError& error);
 bool validateCollectionName(const std::string& name, blog::ApiError& error);

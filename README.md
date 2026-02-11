@@ -7,6 +7,7 @@
 - 登录后可修改自己的密码
 - 登录后可通过头像进入个人中心，管理自己的文章与合集
 - 登录后可创建合集并将文章按顺序加入合集，文章页支持合集内上一篇/下一篇跳转
+- 登录后可对文章点赞、收藏与评论（支持删除自己的评论，管理员可删任意评论）
 - 管理员可查看用户、改角色、封禁/解封用户
 - 后端 JWT 鉴权（Access Token）+ HttpOnly Refresh Token
 - SQLite + FTS5 全文搜索
@@ -42,7 +43,8 @@ MyBlog/
 │   │   ├── 001_init.sql
 │   │   ├── 002_fts.sql
 │   │   ├── 003_timestamp_normalize.sql
-│   │   └── 004_collections.sql
+│   │   ├── 004_collections.sql
+│   │   └── 005_interactions.sql
 │   ├── scripts/
 │   │   ├── migrate.sh
 │   │   └── seed_admin.sh
@@ -58,7 +60,9 @@ MyBlog/
 │   │   ├── models/
 │   │   │   ├── User.h
 │   │   │   ├── Post.h
-│   │   │   └── Collection.h
+│   │   │   ├── Collection.h
+│   │   │   ├── Comment.h
+│   │   │   └── Interaction.h
 │   │   ├── auth/
 │   │   │   ├── JwtService.h
 │   │   │   ├── JwtService.cc
@@ -81,7 +85,9 @@ MyBlog/
 │   │   │   ├── AdminController.h
 │   │   │   ├── AdminController.cc
 │   │   │   ├── CollectionController.h
-│   │   │   └── CollectionController.cc
+│   │   │   ├── CollectionController.cc
+│   │   │   ├── InteractionController.h
+│   │   │   └── InteractionController.cc
 │   │   ├── repositories/
 │   │   │   ├── UserRepository.h
 │   │   │   ├── UserRepository.cc
@@ -90,7 +96,9 @@ MyBlog/
 │   │   │   ├── SearchRepository.h
 │   │   │   ├── SearchRepository.cc
 │   │   │   ├── CollectionRepository.h
-│   │   │   └── CollectionRepository.cc
+│   │   │   ├── CollectionRepository.cc
+│   │   │   ├── InteractionRepository.h
+│   │   │   └── InteractionRepository.cc
 │   │   ├── utils/
 │   │   │   ├── ApiError.h
 │   │   │   ├── ApiError.cc
@@ -117,13 +125,15 @@ MyBlog/
         │   ├── posts.ts
         │   ├── search.ts
         │   ├── admin.ts
-        │   └── collections.ts
+        │   ├── collections.ts
+        │   └── interactions.ts
         ├── types/
         │   ├── api.ts
         │   ├── auth.ts
         │   ├── post.ts
         │   ├── user.ts
-        │   └── collection.ts
+        │   ├── collection.ts
+        │   └── interaction.ts
         ├── store/
         │   └── authStore.ts
         ├── components/
@@ -368,6 +378,17 @@ bash backend/scripts/migrate.sh
 - `PUT /api/posts/:id`
 - `DELETE /api/posts/:id`
 
+### 互动
+
+- `GET /api/posts/:id/interactions`
+- `PUT /api/posts/:id/like`
+- `DELETE /api/posts/:id/like`
+- `PUT /api/posts/:id/favorite`
+- `DELETE /api/posts/:id/favorite`
+- `GET /api/posts/:id/comments?page=&pageSize=`
+- `POST /api/posts/:id/comments`
+- `DELETE /api/comments/:id`
+
 ### 搜索
 
 - `GET /api/search?q=&page=&pageSize=`
@@ -519,6 +540,50 @@ POST2_ID=2
 curl -s "$BASE/api/search?q=JWT&page=1&pageSize=10"
 ```
 
+### 8.1) 点赞 / 收藏 / 评论
+
+```bash
+# 点赞
+curl -s -X PUT "$BASE/api/posts/$POST1_ID/like" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+```bash
+# 收藏
+curl -s -X PUT "$BASE/api/posts/$POST1_ID/favorite" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+```bash
+# 查看互动统计（未登录也可）
+curl -s "$BASE/api/posts/$POST1_ID/interactions"
+```
+
+```bash
+# 发表评论
+curl -s -X POST "$BASE/api/posts/$POST1_ID/comments" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"content":"写得很好，收藏了。"}'
+```
+
+```bash
+# 查看评论列表
+curl -s "$BASE/api/posts/$POST1_ID/comments?page=1&pageSize=10"
+```
+
+```bash
+# 删除评论（评论作者或管理员）
+curl -s -X DELETE "$BASE/api/comments/1" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+```bash
+# 取消点赞 / 取消收藏
+curl -s -X DELETE "$BASE/api/posts/$POST1_ID/like" -H "Authorization: Bearer $TOKEN"
+curl -s -X DELETE "$BASE/api/posts/$POST1_ID/favorite" -H "Authorization: Bearer $TOKEN"
+```
+
 ### 9) 创建合集
 
 ```bash
@@ -636,7 +701,7 @@ bash backend/tests/api_smoke.sh
 - `ADMIN_USER`
 - `ADMIN_PASS`
 
-`api_smoke.sh` 已覆盖注册、登录、刷新、修改密码、发帖、改帖、搜索、合集创建与导航、权限校验、管理员操作与删帖。
+`api_smoke.sh` 已覆盖注册、登录、刷新、修改密码、发帖、改帖、搜索、点赞/收藏/评论、合集创建与导航、权限校验、管理员操作与删帖。
 
 ## 安全说明
 

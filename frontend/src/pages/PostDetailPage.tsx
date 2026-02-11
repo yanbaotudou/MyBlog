@@ -2,22 +2,36 @@ import { useEffect, useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import {
   ArrowLeft,
+  Bookmark,
   Calendar,
   ChevronLeft,
   ChevronRight,
   Clock,
   Edit,
   FolderPlus,
+  Heart,
   Link as LinkIcon,
   List,
+  MessageSquare,
   Share2,
   Trash2
 } from "lucide-react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import {
+  createComment,
+  deleteComment,
+  favoritePost,
+  getPostInteractions,
+  likePost,
+  listComments,
+  unfavoritePost,
+  unlikePost
+} from "../api/interactions";
 import { addPostToCollection, getPostCollections, listMyCollections } from "../api/collections";
 import { deletePost, getPost } from "../api/posts";
 import { useAuthState } from "../store/authStore";
 import type { Collection, CollectionNavigation, PostCollectionMembership } from "../types/collection";
+import type { CommentItem, InteractionSummary } from "../types/interaction";
 import type { Post } from "../types/post";
 import { formatAbsoluteDateTime } from "../utils/dateTime";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -35,9 +49,11 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
+import { Textarea } from "@/components/ui/textarea";
+
+const COMMENT_PAGE_SIZE = 10;
 
 async function copyToClipboard(text: string): Promise<boolean> {
   try {
@@ -62,7 +78,6 @@ export function PostDetailPage() {
 
   const [memberships, setMemberships] = useState<PostCollectionMembership[]>([]);
   const [navigation, setNavigation] = useState<CollectionNavigation | null>(null);
-  const [collectionsLoading, setCollectionsLoading] = useState(false);
   const [collectionsError, setCollectionsError] = useState("");
 
   const [myCollections, setMyCollections] = useState<Collection[]>([]);
@@ -70,12 +85,27 @@ export function PostDetailPage() {
   const [addingToCollection, setAddingToCollection] = useState(false);
   const [showAddDialog, setShowAddDialog] = useState(false);
 
+  const [interactionSummary, setInteractionSummary] = useState<InteractionSummary | null>(null);
+  const [interactionsError, setInteractionsError] = useState("");
+  const [interactionPending, setInteractionPending] = useState<"like" | "favorite" | null>(null);
+
+  const [comments, setComments] = useState<CommentItem[]>([]);
+  const [commentTotal, setCommentTotal] = useState(0);
+  const [commentPage, setCommentPage] = useState(1);
+  const [commentsLoading, setCommentsLoading] = useState(false);
+  const [commentError, setCommentError] = useState("");
+  const [commentInput, setCommentInput] = useState("");
+  const [commentSubmitting, setCommentSubmitting] = useState(false);
+  const [deletingCommentId, setDeletingCommentId] = useState<number | null>(null);
+
   const selectedCollectionId = (() => {
     const raw = searchParams.get("collectionId");
     if (!raw) return undefined;
     const id = Number(raw);
     return Number.isFinite(id) && id > 0 ? id : undefined;
   })();
+
+  const commentPageCount = useMemo(() => Math.max(1, Math.ceil(commentTotal / COMMENT_PAGE_SIZE)), [commentTotal]);
 
   useEffect(() => {
     const id = Number(params.id);
@@ -98,10 +128,42 @@ export function PostDetailPage() {
     void run();
   }, [params.id]);
 
+  const loadInteractions = async (postId: number) => {
+    setInteractionsError("");
+    try {
+      const data = await getPostInteractions(postId);
+      setInteractionSummary(data);
+    } catch (e) {
+      setInteractionsError(e instanceof Error ? e.message : "加载互动数据失败");
+    }
+  };
+
+  const loadComments = async (postId: number, page: number) => {
+    setCommentsLoading(true);
+    setCommentError("");
+    try {
+      const data = await listComments(postId, page, COMMENT_PAGE_SIZE);
+      setComments(data.items);
+      setCommentTotal(data.total);
+      setCommentPage(data.page);
+    } catch (e) {
+      setCommentError(e instanceof Error ? e.message : "加载评论失败");
+    } finally {
+      setCommentsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!post) return;
+    setCommentPage(1);
+    setCommentInput("");
+    setComments([]);
+    setCommentTotal(0);
+  }, [post?.id]);
+
   useEffect(() => {
     if (!post) return;
     const run = async () => {
-      setCollectionsLoading(true);
       setCollectionsError("");
       try {
         const data = await getPostCollections(post.id, selectedCollectionId);
@@ -110,12 +172,20 @@ export function PostDetailPage() {
       } catch (e) {
         setCollectionsError(e instanceof Error ? e.message : "加载合集信息失败");
         setNavigation(null);
-      } finally {
-        setCollectionsLoading(false);
       }
     };
     void run();
   }, [post, selectedCollectionId]);
+
+  useEffect(() => {
+    if (!post) return;
+    void loadInteractions(post.id);
+  }, [post, auth.user?.id]);
+
+  useEffect(() => {
+    if (!post) return;
+    void loadComments(post.id, commentPage);
+  }, [post, commentPage]);
 
   useEffect(() => {
     if (!auth.user) {
@@ -140,6 +210,85 @@ export function PostDetailPage() {
     if (!post || !auth.user) return false;
     return auth.user.role === "admin" || auth.user.id === post.authorId;
   }, [post, auth.user]);
+
+  const ensureLoginForInteraction = (): boolean => {
+    if (auth.user) {
+      return true;
+    }
+    setInteractionsError("请先登录后再进行互动");
+    navigate("/login");
+    return false;
+  };
+
+  const handleLikeToggle = async () => {
+    if (!post || !interactionSummary || !ensureLoginForInteraction()) return;
+    setInteractionPending("like");
+    setInteractionsError("");
+    try {
+      const data = interactionSummary.likedByMe ? await unlikePost(post.id) : await likePost(post.id);
+      setInteractionSummary(data);
+    } catch (e) {
+      setInteractionsError(e instanceof Error ? e.message : "点赞操作失败");
+    } finally {
+      setInteractionPending(null);
+    }
+  };
+
+  const handleFavoriteToggle = async () => {
+    if (!post || !interactionSummary || !ensureLoginForInteraction()) return;
+    setInteractionPending("favorite");
+    setInteractionsError("");
+    try {
+      const data = interactionSummary.favoritedByMe ? await unfavoritePost(post.id) : await favoritePost(post.id);
+      setInteractionSummary(data);
+    } catch (e) {
+      setInteractionsError(e instanceof Error ? e.message : "收藏操作失败");
+    } finally {
+      setInteractionPending(null);
+    }
+  };
+
+  const handleSubmitComment = async () => {
+    if (!post || !ensureLoginForInteraction()) return;
+    const content = commentInput.trim();
+    if (!content) {
+      setCommentError("评论内容不能为空");
+      return;
+    }
+    setCommentSubmitting(true);
+    setCommentError("");
+    try {
+      await createComment(post.id, content);
+      setCommentInput("");
+      await loadInteractions(post.id);
+      await loadComments(post.id, 1);
+      setCommentPage(1);
+    } catch (e) {
+      setCommentError(e instanceof Error ? e.message : "发表评论失败");
+    } finally {
+      setCommentSubmitting(false);
+    }
+  };
+
+  const handleDeleteComment = async (comment: CommentItem) => {
+    if (!post) return;
+    if (!window.confirm("确认删除这条评论吗？")) return;
+    setDeletingCommentId(comment.id);
+    setCommentError("");
+    try {
+      await deleteComment(comment.id);
+      await loadInteractions(post.id);
+      if (comments.length === 1 && commentPage > 1) {
+        setCommentPage((prev) => Math.max(1, prev - 1));
+      } else {
+        await loadComments(post.id, commentPage);
+      }
+    } catch (e) {
+      setCommentError(e instanceof Error ? e.message : "删除评论失败");
+    } finally {
+      setDeletingCommentId(null);
+    }
+  };
 
   const handleDelete = async () => {
     if (!post) return;
@@ -192,6 +341,10 @@ export function PostDetailPage() {
   if (!post) {
     return <div className="min-h-screen flex items-center justify-center text-muted-foreground">文章不存在</div>;
   }
+
+  const likeCount = interactionSummary?.likeCount ?? 0;
+  const favoriteCount = interactionSummary?.favoriteCount ?? 0;
+  const commentsCount = interactionSummary?.commentCount ?? commentTotal;
 
   return (
     <div className="min-h-screen bg-background">
@@ -305,7 +458,7 @@ export function PostDetailPage() {
           </div>
         </div>
 
-        <div className="flex gap-2 mb-8">
+        <div className="flex gap-2 mb-8 flex-wrap">
           <Badge variant="secondary">文章</Badge>
           {selectedCollectionId ? <Badge variant="secondary">合集上下文</Badge> : null}
         </div>
@@ -314,11 +467,139 @@ export function PostDetailPage() {
           <ReactMarkdown>{post.contentMarkdown}</ReactMarkdown>
         </div>
 
-        {shareMessage ? <p className="text-xs text-muted-foreground mt-4">{shareMessage}</p> : null}
-        {collectionsError ? <p className="text-xs text-destructive mt-2">{collectionsError}</p> : null}
+        <section className="mt-10 border-t border-border pt-6 space-y-4">
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button
+              type="button"
+              variant={interactionSummary?.likedByMe ? "default" : "outline"}
+              size="sm"
+              className="gap-2"
+              disabled={interactionPending !== null}
+              onClick={handleLikeToggle}
+            >
+              <Heart className={`w-4 h-4 ${interactionSummary?.likedByMe ? "fill-current" : ""}`} />
+              点赞 {likeCount}
+            </Button>
+
+            <Button
+              type="button"
+              variant={interactionSummary?.favoritedByMe ? "default" : "outline"}
+              size="sm"
+              className="gap-2"
+              disabled={interactionPending !== null}
+              onClick={handleFavoriteToggle}
+            >
+              <Bookmark className={`w-4 h-4 ${interactionSummary?.favoritedByMe ? "fill-current" : ""}`} />
+              收藏 {favoriteCount}
+            </Button>
+
+            <Badge variant="outline" className="h-8 px-3 text-sm gap-1 inline-flex items-center">
+              <MessageSquare className="w-3.5 h-3.5" />
+              评论 {commentsCount}
+            </Badge>
+          </div>
+
+          {interactionsError ? <p className="text-xs text-destructive">{interactionsError}</p> : null}
+          {shareMessage ? <p className="text-xs text-muted-foreground">{shareMessage}</p> : null}
+          {collectionsError ? <p className="text-xs text-destructive">{collectionsError}</p> : null}
+        </section>
+
+        <section className="mt-8 space-y-4">
+          <h2 className="text-xl font-semibold">评论</h2>
+
+          {auth.user ? (
+            <div className="space-y-2">
+              <Textarea
+                placeholder="写下你的评论（最多 2000 字）"
+                value={commentInput}
+                onChange={(e) => setCommentInput(e.target.value)}
+                maxLength={2000}
+                rows={4}
+              />
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-muted-foreground">{commentInput.length}/2000</p>
+                <Button type="button" size="sm" onClick={handleSubmitComment} disabled={commentSubmitting}>
+                  {commentSubmitting ? "提交中..." : "发表评论"}
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              <Link to="/login" className="text-primary hover:underline">
+                登录
+              </Link>
+              后可发表评论。
+            </p>
+          )}
+
+          {commentError ? <p className="text-sm text-destructive">{commentError}</p> : null}
+
+          {commentsLoading ? <p className="text-sm text-muted-foreground">评论加载中...</p> : null}
+
+          {!commentsLoading && comments.length === 0 ? (
+            <p className="text-sm text-muted-foreground">暂无评论，来发第一条吧。</p>
+          ) : null}
+
+          <div className="space-y-3">
+            {comments.map((comment) => {
+              const canDeleteComment = !!auth.user && (auth.user.role === "admin" || auth.user.id === comment.userId);
+              return (
+                <div key={comment.id} className="rounded-lg border border-border p-4 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 text-sm">
+                      <span className="font-medium text-foreground">{comment.username}</span>
+                      <span className="text-muted-foreground">{formatAbsoluteDateTime(comment.createdAt)}</span>
+                    </div>
+                    {canDeleteComment ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        className="text-destructive hover:text-destructive"
+                        onClick={() => void handleDeleteComment(comment)}
+                        disabled={deletingCommentId === comment.id}
+                      >
+                        删除
+                      </Button>
+                    ) : null}
+                  </div>
+                  <p className="text-sm leading-6 whitespace-pre-wrap break-words">{comment.content}</p>
+                </div>
+              );
+            })}
+          </div>
+
+          {commentPageCount > 1 ? (
+            <div className="flex items-center justify-between pt-2">
+              <p className="text-xs text-muted-foreground">
+                第 {commentPage} / {commentPageCount} 页，共 {commentTotal} 条评论
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={commentPage <= 1 || commentsLoading}
+                  onClick={() => setCommentPage((prev) => Math.max(1, prev - 1))}
+                >
+                  上一页
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={commentPage >= commentPageCount || commentsLoading}
+                  onClick={() => setCommentPage((prev) => Math.min(commentPageCount, prev + 1))}
+                >
+                  下一页
+                </Button>
+              </div>
+            </div>
+          ) : null}
+        </section>
 
         {selectedCollectionId && navigation ? (
-          <div className="bg-secondary/50 rounded-xl p-6 mt-8">
+          <div className="bg-secondary/50 rounded-xl p-6 mt-10">
             <p className="text-sm text-muted-foreground mb-4">
               来自合集：
               <span className="font-medium text-foreground">

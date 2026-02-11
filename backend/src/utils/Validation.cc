@@ -41,6 +41,14 @@ bool validateContent(const std::string& content, blog::ApiError& error) {
   return true;
 }
 
+bool validateCommentContent(const std::string& content, blog::ApiError& error) {
+  if (content.empty() || content.size() > 2000) {
+    error = blog::ApiError(400, "VALIDATION_ERROR", "comment content length must be 1-2000");
+    return false;
+  }
+  return true;
+}
+
 bool validateRole(const std::string& role, blog::ApiError& error) {
   if (role != "user" && role != "admin") {
     error = blog::ApiError(400, "VALIDATION_ERROR", "role must be user or admin");

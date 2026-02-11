@@ -27,10 +27,12 @@ add_executable(blog_api
   src/controllers/SearchController.cc
   src/controllers/AdminController.cc
   src/controllers/CollectionController.cc
+  src/controllers/InteractionController.cc
   src/repositories/UserRepository.cc
   src/repositories/PostRepository.cc
   src/repositories/SearchRepository.cc
   src/repositories/CollectionRepository.cc
+  src/repositories/InteractionRepository.cc
   src/utils/ApiError.cc
   src/utils/Validation.cc
 )
