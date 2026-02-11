@@ -7,6 +7,7 @@
 #include "db/Database.h"
 #include "models/Comment.h"
 #include "models/Interaction.h"
+#include "models/Post.h"
 
 namespace blog {
 
@@ -21,6 +22,14 @@ class InteractionRepository {
 
   bool setLike(int64_t postId, int64_t userId, bool liked, std::string& errorMessage) const;
   bool setFavorite(int64_t postId, int64_t userId, bool favorited, std::string& errorMessage) const;
+  bool listFavoritePostsByUser(int64_t userId,
+                               int page,
+                               int pageSize,
+                               const std::string& query,
+                               bool orderDesc,
+                               std::vector<Post>& posts,
+                               int& total,
+                               std::string& errorMessage) const;
 
   bool listComments(int64_t postId,
                     int page,

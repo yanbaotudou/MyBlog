@@ -1,5 +1,6 @@
 import { apiRequest } from "./client";
 import type { CommentItem, InteractionSummary, PagedComments } from "../types/interaction";
+import type { PagedPosts } from "../types/post";
 
 export function getPostInteractions(postId: number): Promise<InteractionSummary> {
   return apiRequest<InteractionSummary>(`/api/posts/${postId}/interactions`, {
@@ -28,6 +29,30 @@ export function favoritePost(postId: number): Promise<InteractionSummary> {
 export function unfavoritePost(postId: number): Promise<InteractionSummary> {
   return apiRequest<InteractionSummary>(`/api/posts/${postId}/favorite`, {
     method: "DELETE"
+  });
+}
+
+export function listMyFavoritePosts(page = 1, pageSize = 10): Promise<PagedPosts> {
+  return apiRequest<PagedPosts>(`/api/me/favorites?page=${page}&pageSize=${pageSize}`, {
+    method: "GET"
+  });
+}
+
+export function listMyFavoritePostsWithQuery(
+  page = 1,
+  pageSize = 10,
+  query = "",
+  order: "asc" | "desc" = "desc"
+): Promise<PagedPosts> {
+  const params = new URLSearchParams();
+  params.set("page", String(page));
+  params.set("pageSize", String(pageSize));
+  params.set("order", order);
+  if (query.trim()) {
+    params.set("q", query.trim());
+  }
+  return apiRequest<PagedPosts>(`/api/me/favorites?${params.toString()}`, {
+    method: "GET"
   });
 }
 

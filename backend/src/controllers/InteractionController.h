@@ -38,6 +38,9 @@ class InteractionController {
                       std::function<void(const drogon::HttpResponsePtr&)>&& callback,
                       const std::string& postId) const;
 
+  void listMyFavorites(const drogon::HttpRequestPtr& req,
+                       std::function<void(const drogon::HttpResponsePtr&)>&& callback) const;
+
   void listComments(const drogon::HttpRequestPtr& req,
                     std::function<void(const drogon::HttpResponsePtr&)>&& callback,
                     const std::string& postId) const;
@@ -58,6 +61,7 @@ class InteractionController {
 
   Json::Value summaryToJson(const PostInteractionSummary& summary) const;
   Json::Value commentToJson(const Comment& comment) const;
+  Json::Value postToJson(const Post& post) const;
 
   bool tryReadOptionalAuthUserId(const drogon::HttpRequestPtr& req, std::optional<int64_t>& userId) const;
   bool ensureActivePost(int64_t postId, const std::string& requestId,

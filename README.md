@@ -385,6 +385,7 @@ bash backend/scripts/migrate.sh
 - `DELETE /api/posts/:id/like`
 - `PUT /api/posts/:id/favorite`
 - `DELETE /api/posts/:id/favorite`
+- `GET /api/me/favorites?page=&pageSize=&q=&order=desc|asc`
 - `GET /api/posts/:id/comments?page=&pageSize=`
 - `POST /api/posts/:id/comments`
 - `DELETE /api/comments/:id`
@@ -557,6 +558,18 @@ curl -s -X PUT "$BASE/api/posts/$POST1_ID/favorite" \
 ```bash
 # 查看互动统计（未登录也可）
 curl -s "$BASE/api/posts/$POST1_ID/interactions"
+```
+
+```bash
+# 查看我的收藏文章（登录后）
+curl -s "$BASE/api/me/favorites?page=1&pageSize=10" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+```bash
+# 收藏搜索 + 排序（收藏时间）
+curl -s "$BASE/api/me/favorites?page=1&pageSize=10&q=JWT&order=desc" \
+  -H "Authorization: Bearer $TOKEN"
 ```
 
 ```bash

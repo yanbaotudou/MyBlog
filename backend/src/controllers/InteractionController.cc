@@ -38,6 +38,22 @@ Json::Value InteractionController::commentToJson(const Comment& comment) const {
   return value;
 }
 
+Json::Value InteractionController::postToJson(const Post& post) const {
+  Json::Value value(Json::objectValue);
+  value["id"] = Json::Int64(post.id);
+  value["title"] = post.title;
+  value["contentMarkdown"] = post.contentMarkdown;
+  value["authorId"] = Json::Int64(post.authorId);
+  value["authorUsername"] = post.authorUsername;
+  value["createdAt"] = post.createdAt;
+  value["updatedAt"] = post.updatedAt;
+  if (!post.favoritedAt.empty()) {
+    value["favoritedAt"] = post.favoritedAt;
+  }
+  value["isDeleted"] = post.isDeleted;
+  return value;
+}
+
 bool InteractionController::tryReadOptionalAuthUserId(const drogon::HttpRequestPtr& req,
                                                       std::optional<int64_t>& userId) const {
   userId.reset();
@@ -234,6 +250,66 @@ void InteractionController::unfavoritePost(const drogon::HttpRequestPtr& req,
     return;
   }
   callback(utils::makeSuccess(summaryToJson(summary), requestId, 200, "unfavorited"));
+}
+
+void InteractionController::listMyFavorites(const drogon::HttpRequestPtr& req,
+                                            std::function<void(const drogon::HttpResponsePtr&)>&& callback) const {
+  const std::string requestId = utils::getRequestId(req);
+
+  RequestUser authUser;
+  ApiError authError(401, "AUTH_REQUIRED", "auth required");
+  if (!AuthMiddleware::authenticate(req, jwtService_, userRepository_, authUser, authError)) {
+    callback(utils::makeError(authError, requestId));
+    return;
+  }
+
+  ApiError validationError(400, "VALIDATION_ERROR", "invalid pagination");
+  bool paginationOk = false;
+  const auto pagination = utils::readPagination(req, 10, 50, validationError, paginationOk);
+  if (!paginationOk) {
+    callback(utils::makeError(validationError, requestId));
+    return;
+  }
+
+  const std::string query = req->getParameter("q");
+  if (query.size() > 100) {
+    callback(utils::makeError(ApiError(400, "VALIDATION_ERROR", "search query length must be <=100"), requestId));
+    return;
+  }
+
+  std::string order = req->getParameter("order");
+  if (order.empty()) {
+    order = "desc";
+  }
+  if (order != "desc" && order != "asc") {
+    callback(utils::makeError(ApiError(400, "VALIDATION_ERROR", "order must be desc or asc"), requestId));
+    return;
+  }
+  const bool orderDesc = (order == "desc");
+
+  std::vector<Post> posts;
+  int total = 0;
+  std::string dbError;
+  if (!interactionRepository_.listFavoritePostsByUser(
+          authUser.id, pagination.page, pagination.pageSize, query, orderDesc, posts, total, dbError)) {
+    callback(utils::makeError(ApiError(500, "DB_ERROR", dbError), requestId));
+    return;
+  }
+
+  Json::Value items(Json::arrayValue);
+  for (const auto& post : posts) {
+    items.append(postToJson(post));
+  }
+
+  Json::Value data(Json::objectValue);
+  data["items"] = items;
+  data["page"] = pagination.page;
+  data["pageSize"] = pagination.pageSize;
+  data["total"] = total;
+  data["q"] = query;
+  data["order"] = order;
+
+  callback(utils::makeSuccess(data, requestId));
 }
 
 void InteractionController::listComments(const drogon::HttpRequestPtr& req,

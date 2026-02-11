@@ -290,6 +290,14 @@ int main() {
       {drogon::Delete});
 
   drogon::app().registerHandler(
+      "/api/me/favorites",
+      [&interactionController](const drogon::HttpRequestPtr& req,
+                               std::function<void(const drogon::HttpResponsePtr&)>&& callback) {
+        interactionController.listMyFavorites(req, std::move(callback));
+      },
+      {drogon::Get});
+
+  drogon::app().registerHandler(
       "/api/posts/{1}/comments",
       [&interactionController](const drogon::HttpRequestPtr& req,
                                std::function<void(const drogon::HttpResponsePtr&)>&& callback,

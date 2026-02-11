@@ -114,6 +114,26 @@ curl -sS -X PUT "$BASE_URL/api/posts/$POST_ID/favorite" \
   -H "Authorization: Bearer $USER_TOKEN" \
   | jq -e '.data.favoritedByMe == true and .data.favoriteCount == 1' >/dev/null
 
+curl -sS "$BASE_URL/api/me/favorites?page=1&pageSize=10" \
+  -H "Authorization: Bearer $USER_TOKEN" \
+  | jq -e ".data.total >= 1 and .data.items[0].id == $POST_ID" >/dev/null
+
+curl -sS -X PUT "$BASE_URL/api/posts/$POST_ID_2/favorite" \
+  -H "Authorization: Bearer $USER_TOKEN" \
+  | jq -e '.data.favoritedByMe == true and .data.favoriteCount == 1' >/dev/null
+
+curl -sS "$BASE_URL/api/me/favorites?page=1&pageSize=10&order=desc" \
+  -H "Authorization: Bearer $USER_TOKEN" \
+  | jq -e ".data.total >= 2 and .data.items[0].id == $POST_ID_2" >/dev/null
+
+curl -sS "$BASE_URL/api/me/favorites?page=1&pageSize=10&order=asc" \
+  -H "Authorization: Bearer $USER_TOKEN" \
+  | jq -e ".data.total >= 2 and .data.items[0].id == $POST_ID" >/dev/null
+
+curl -sS "$BASE_URL/api/me/favorites?page=1&pageSize=10&q=Collections" \
+  -H "Authorization: Bearer $USER_TOKEN" \
+  | jq -e ".data.total >= 1 and .data.items[0].id == $POST_ID_2" >/dev/null
+
 COMMENT_RESP=$(curl -sS -X POST "$BASE_URL/api/posts/$POST_ID/comments" \
   -H 'Content-Type: application/json' \
   -H "Authorization: Bearer $USER_TOKEN" \
@@ -133,6 +153,10 @@ curl -sS -X DELETE "$BASE_URL/api/posts/$POST_ID/like" \
   | jq -e '.data.likedByMe == false and .data.likeCount == 0' >/dev/null
 
 curl -sS -X DELETE "$BASE_URL/api/posts/$POST_ID/favorite" \
+  -H "Authorization: Bearer $USER_TOKEN" \
+  | jq -e '.data.favoritedByMe == false and .data.favoriteCount == 0' >/dev/null
+
+curl -sS -X DELETE "$BASE_URL/api/posts/$POST_ID_2/favorite" \
   -H "Authorization: Bearer $USER_TOKEN" \
   | jq -e '.data.favoritedByMe == false and .data.favoriteCount == 0' >/dev/null
 

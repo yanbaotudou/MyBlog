@@ -26,6 +26,20 @@ Comment rowToComment(sqlite3_stmt* stmt) {
   return comment;
 }
 
+Post rowToPost(sqlite3_stmt* stmt) {
+  Post post;
+  post.id = sqlite3_column_int64(stmt, 0);
+  post.title = textOrEmpty(stmt, 1);
+  post.contentMarkdown = textOrEmpty(stmt, 2);
+  post.authorId = sqlite3_column_int64(stmt, 3);
+  post.authorUsername = textOrEmpty(stmt, 4);
+  post.createdAt = textOrEmpty(stmt, 5);
+  post.updatedAt = textOrEmpty(stmt, 6);
+  post.favoritedAt = textOrEmpty(stmt, 7);
+  post.isDeleted = sqlite3_column_int(stmt, 8) != 0;
+  return post;
+}
+
 bool execLikeMutation(sqlite3* db,
                       const char* insertSql,
                       const char* deleteSql,
@@ -149,6 +163,90 @@ bool InteractionRepository::setFavorite(int64_t postId,
   const bool ok = execLikeMutation(db, insertSql, deleteSql, postId, userId, favorited, errorMessage);
   sqlite3_close(db);
   return ok;
+}
+
+bool InteractionRepository::listFavoritePostsByUser(int64_t userId,
+                                                    int page,
+                                                    int pageSize,
+                                                    const std::string& query,
+                                                    bool orderDesc,
+                                                    std::vector<Post>& posts,
+                                                    int& total,
+                                                    std::string& errorMessage) const {
+  posts.clear();
+
+  std::string dbError;
+  sqlite3* db = db_.open(dbError);
+  if (db == nullptr) {
+    errorMessage = dbError;
+    return false;
+  }
+
+  const char* countSql =
+      "SELECT COUNT(1) "
+      "FROM post_favorites f "
+      "JOIN posts p ON p.id = f.post_id "
+      "WHERE f.user_id = ? AND p.is_deleted = 0 "
+      "AND (? = '' OR lower(p.title) LIKE '%' || lower(?) || '%' OR lower(p.content_markdown) LIKE '%' || lower(?) || '%');";
+
+  sqlite3_stmt* countStmt = nullptr;
+  if (sqlite3_prepare_v2(db, countSql, -1, &countStmt, nullptr) != SQLITE_OK) {
+    errorMessage = sqlite3_errmsg(db);
+    sqlite3_close(db);
+    return false;
+  }
+  sqlite3_bind_int64(countStmt, 1, userId);
+  sqlite3_bind_text(countStmt, 2, query.c_str(), -1, SQLITE_TRANSIENT);
+  sqlite3_bind_text(countStmt, 3, query.c_str(), -1, SQLITE_TRANSIENT);
+  sqlite3_bind_text(countStmt, 4, query.c_str(), -1, SQLITE_TRANSIENT);
+  total = 0;
+  if (sqlite3_step(countStmt) == SQLITE_ROW) {
+    total = sqlite3_column_int(countStmt, 0);
+  }
+  sqlite3_finalize(countStmt);
+
+  const char* sqlDesc =
+      "SELECT p.id, p.title, p.content_markdown, p.author_id, u.username, p.created_at, p.updated_at, f.created_at AS favorited_at, p.is_deleted "
+      "FROM post_favorites f "
+      "JOIN posts p ON p.id = f.post_id "
+      "JOIN users u ON u.id = p.author_id "
+      "WHERE f.user_id = ? AND p.is_deleted = 0 "
+      "AND (? = '' OR lower(p.title) LIKE '%' || lower(?) || '%' OR lower(p.content_markdown) LIKE '%' || lower(?) || '%') "
+      "ORDER BY f.created_at DESC "
+      "LIMIT ? OFFSET ?;";
+
+  const char* sqlAsc =
+      "SELECT p.id, p.title, p.content_markdown, p.author_id, u.username, p.created_at, p.updated_at, f.created_at AS favorited_at, p.is_deleted "
+      "FROM post_favorites f "
+      "JOIN posts p ON p.id = f.post_id "
+      "JOIN users u ON u.id = p.author_id "
+      "WHERE f.user_id = ? AND p.is_deleted = 0 "
+      "AND (? = '' OR lower(p.title) LIKE '%' || lower(?) || '%' OR lower(p.content_markdown) LIKE '%' || lower(?) || '%') "
+      "ORDER BY f.created_at ASC "
+      "LIMIT ? OFFSET ?;";
+
+  sqlite3_stmt* stmt = nullptr;
+  const char* sql = orderDesc ? sqlDesc : sqlAsc;
+  if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+    errorMessage = sqlite3_errmsg(db);
+    sqlite3_close(db);
+    return false;
+  }
+
+  sqlite3_bind_int64(stmt, 1, userId);
+  sqlite3_bind_text(stmt, 2, query.c_str(), -1, SQLITE_TRANSIENT);
+  sqlite3_bind_text(stmt, 3, query.c_str(), -1, SQLITE_TRANSIENT);
+  sqlite3_bind_text(stmt, 4, query.c_str(), -1, SQLITE_TRANSIENT);
+  sqlite3_bind_int(stmt, 5, pageSize);
+  sqlite3_bind_int(stmt, 6, (page - 1) * pageSize);
+
+  while (sqlite3_step(stmt) == SQLITE_ROW) {
+    posts.push_back(rowToPost(stmt));
+  }
+
+  sqlite3_finalize(stmt);
+  sqlite3_close(db);
+  return true;
 }
 
 bool InteractionRepository::listComments(int64_t postId,

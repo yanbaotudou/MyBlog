@@ -13,6 +13,7 @@ struct Post {
   std::string authorUsername;
   std::string createdAt;
   std::string updatedAt;
+  std::string favoritedAt;
   bool isDeleted = false;
   int collectionPosition = 0;
 };

@@ -6,6 +6,7 @@ export interface Post {
   authorUsername: string;
   createdAt: string;
   updatedAt: string;
+  favoritedAt?: string;
   isDeleted: boolean;
   collectionPosition?: number;
 }
@@ -15,4 +16,6 @@ export interface PagedPosts {
   page: number;
   pageSize: number;
   total: number;
+  q?: string;
+  order?: "asc" | "desc";
 }

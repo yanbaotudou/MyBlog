@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { BookOpen, FilePenLine, KeyRound, LogOut, Trash2, UserCircle2 } from "lucide-react";
+import { BookOpen, FilePenLine, Heart, KeyRound, LogOut, Trash2, UserCircle2 } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { logout } from "../api/auth";
 import { listMyCollections } from "../api/collections";
+import { listMyFavoritePostsWithQuery, unfavoritePost } from "../api/interactions";
 import { deletePost, listMyPosts } from "../api/posts";
 import { authStore, useAuthState } from "../store/authStore";
 import type { Collection } from "../types/collection";
@@ -12,6 +13,8 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
@@ -22,14 +25,30 @@ export function ProfilePage() {
   const navigate = useNavigate();
   const [posts, setPosts] = useState<Post[]>([]);
   const [collections, setCollections] = useState<Collection[]>([]);
+  const [favorites, setFavorites] = useState<Post[]>([]);
+
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
+
+  const [favoritesPage, setFavoritesPage] = useState(1);
+  const [favoritesTotal, setFavoritesTotal] = useState(0);
+  const [favoriteQueryInput, setFavoriteQueryInput] = useState("");
+  const [favoriteQuery, setFavoriteQuery] = useState("");
+  const [favoriteOrder, setFavoriteOrder] = useState<"asc" | "desc">("desc");
+
   const [postsLoading, setPostsLoading] = useState(false);
   const [collectionsLoading, setCollectionsLoading] = useState(false);
+  const [favoritesLoading, setFavoritesLoading] = useState(false);
+
   const [pendingPostId, setPendingPostId] = useState<number | null>(null);
+  const [pendingFavoritePostId, setPendingFavoritePostId] = useState<number | null>(null);
   const [error, setError] = useState("");
 
   const pageCount = useMemo(() => Math.max(1, Math.ceil(total / PAGE_SIZE)), [total]);
+  const favoritePageCount = useMemo(
+    () => Math.max(1, Math.ceil(favoritesTotal / PAGE_SIZE)),
+    [favoritesTotal]
+  );
 
   const loadPosts = async (nextPage = page) => {
     setPostsLoading(true);
@@ -59,9 +78,28 @@ export function ProfilePage() {
     }
   };
 
+  const loadFavorites = async (nextPage = favoritesPage) => {
+    setFavoritesLoading(true);
+    setError("");
+    try {
+      const data = await listMyFavoritePostsWithQuery(nextPage, PAGE_SIZE, favoriteQuery, favoriteOrder);
+      setFavorites(data.items);
+      setFavoritesTotal(data.total);
+      setFavoritesPage(data.page);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "加载我的收藏失败");
+    } finally {
+      setFavoritesLoading(false);
+    }
+  };
+
   useEffect(() => {
     void loadPosts(page);
   }, [page]);
+
+  useEffect(() => {
+    void loadFavorites(favoritesPage);
+  }, [favoritesPage, favoriteQuery, favoriteOrder]);
 
   useEffect(() => {
     void loadCollections();
@@ -85,6 +123,39 @@ export function ProfilePage() {
     } finally {
       setPendingPostId(null);
     }
+  };
+
+  const onRemoveFavorite = async (postId: number) => {
+    if (!window.confirm("确认取消收藏这篇文章吗？")) {
+      return;
+    }
+
+    setPendingFavoritePostId(postId);
+    setError("");
+    try {
+      await unfavoritePost(postId);
+      if (favorites.length === 1 && favoritesPage > 1) {
+        setFavoritesPage((prev) => Math.max(1, prev - 1));
+      } else {
+        await loadFavorites(favoritesPage);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "取消收藏失败");
+    } finally {
+      setPendingFavoritePostId(null);
+    }
+  };
+
+  const onFavoriteSearchSubmit = () => {
+    const nextQuery = favoriteQueryInput.trim();
+    setFavoriteQuery(nextQuery);
+    setFavoritesPage(1);
+  };
+
+  const onFavoriteSearchReset = () => {
+    setFavoriteQueryInput("");
+    setFavoriteQuery("");
+    setFavoritesPage(1);
   };
 
   const onLogout = async () => {
@@ -126,7 +197,7 @@ export function ProfilePage() {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
           <Card>
             <CardHeader className="pb-2">
               <CardDescription>我的文章</CardDescription>
@@ -137,6 +208,12 @@ export function ProfilePage() {
             <CardHeader className="pb-2">
               <CardDescription>我的合集</CardDescription>
               <CardTitle className="text-2xl">{collections.length}</CardTitle>
+            </CardHeader>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardDescription>我的收藏</CardDescription>
+              <CardTitle className="text-2xl">{favoritesTotal}</CardTitle>
             </CardHeader>
           </Card>
           <Card>
@@ -170,6 +247,10 @@ export function ProfilePage() {
             <TabsTrigger value="posts" className="gap-2">
               <UserCircle2 className="w-4 h-4" />
               我的文章
+            </TabsTrigger>
+            <TabsTrigger value="favorites" className="gap-2">
+              <Heart className="w-4 h-4" />
+              我的收藏
             </TabsTrigger>
             <TabsTrigger value="collections" className="gap-2">
               <BookOpen className="w-4 h-4" />
@@ -228,7 +309,7 @@ export function ProfilePage() {
                                 size="sm"
                                 variant="destructive"
                                 disabled={pendingPostId === post.id}
-                                onClick={() => onDeletePost(post.id)}
+                                onClick={() => void onDeletePost(post.id)}
                               >
                                 <Trash2 className="w-4 h-4" />
                               </Button>
@@ -253,6 +334,132 @@ export function ProfilePage() {
                       size="sm"
                       disabled={page >= pageCount}
                       onClick={() => setPage((p) => p + 1)}
+                    >
+                      下一页
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="favorites">
+            <Card>
+              <CardHeader>
+                <CardTitle>收藏管理</CardTitle>
+                <CardDescription>查看你收藏的文章，或取消收藏。</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-[1fr_220px_auto_auto] gap-3">
+                  <Input
+                    placeholder="搜索收藏（标题或正文）"
+                    value={favoriteQueryInput}
+                    onChange={(e) => setFavoriteQueryInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        onFavoriteSearchSubmit();
+                      }
+                    }}
+                  />
+                  <Select
+                    value={favoriteOrder}
+                    onValueChange={(value) => {
+                      const order = value === "asc" ? "asc" : "desc";
+                      setFavoriteOrder(order);
+                      setFavoritesPage(1);
+                    }}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="排序方式" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="desc">按收藏时间（最新）</SelectItem>
+                      <SelectItem value="asc">按收藏时间（最早）</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Button type="button" variant="outline" onClick={onFavoriteSearchSubmit}>
+                    搜索
+                  </Button>
+                  <Button type="button" variant="ghost" onClick={onFavoriteSearchReset}>
+                    重置
+                  </Button>
+                </div>
+
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-[80px]">ID</TableHead>
+                      <TableHead>标题</TableHead>
+                      <TableHead>作者</TableHead>
+                      <TableHead>收藏时间</TableHead>
+                      <TableHead>发布时间</TableHead>
+                      <TableHead>更新时间</TableHead>
+                      <TableHead className="text-right">操作</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {favoritesLoading ? (
+                      <TableRow>
+                        <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                          正在加载收藏...
+                        </TableCell>
+                      </TableRow>
+                    ) : favorites.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                          你还没有收藏文章
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      favorites.map((post) => (
+                        <TableRow key={post.id}>
+                          <TableCell>{post.id}</TableCell>
+                          <TableCell className="max-w-[360px]">
+                            <div className="line-clamp-2 font-medium">{post.title}</div>
+                          </TableCell>
+                          <TableCell>{post.authorUsername}</TableCell>
+                          <TableCell>{formatAbsoluteDateTime(post.favoritedAt || post.updatedAt)}</TableCell>
+                          <TableCell>{formatAbsoluteDateTime(post.createdAt)}</TableCell>
+                          <TableCell>{formatAbsoluteDateTime(post.updatedAt)}</TableCell>
+                          <TableCell>
+                            <div className="flex justify-end gap-2">
+                              <Button size="sm" variant="outline" asChild>
+                                <Link to={`/posts/${post.id}`}>查看</Link>
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                disabled={pendingFavoritePostId === post.id}
+                                onClick={() => void onRemoveFavorite(post.id)}
+                              >
+                                取消收藏
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+
+                <div className="flex items-center justify-between">
+                  <p className="text-sm text-muted-foreground">
+                    第 {favoritesPage} / {favoritePageCount} 页，共 {favoritesTotal} 篇
+                  </p>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={favoritesPage <= 1}
+                      onClick={() => setFavoritesPage((p) => p - 1)}
+                    >
+                      上一页
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={favoritesPage >= favoritePageCount}
+                      onClick={() => setFavoritesPage((p) => p + 1)}
                     >
                       下一页
                     </Button>
