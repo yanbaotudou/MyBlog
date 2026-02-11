@@ -8,8 +8,15 @@ frontend/node_modules/
 
 # Runtime data
 data/
+logs/
 
 # OS/editor
 .DS_Store
 .vscode/
 .idea/
+
+# TypeScript incremental build cache
+*.tsbuildinfo
+
+# Local package/archive drops
+博客文章管理系统.zip
